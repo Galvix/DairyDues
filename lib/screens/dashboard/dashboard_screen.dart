@@ -22,7 +22,7 @@ class DashboardScreen extends StatelessWidget {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Hisaab — Dairy Manager',
+            const Text('DairyDues — Dairy Manager',
                 style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
             Text(DateFormat('EEEE, dd MMMM yyyy').format(today),
                 style: const TextStyle(fontSize: 11, color: Colors.white70)),
@@ -39,8 +39,10 @@ class DashboardScreen extends StatelessWidget {
               stream: db.watchDeliveriesForDate(todayStart),
               builder: (context, snap) {
                 final deliveries = snap.data ?? [];
-                final totalMilk = deliveries.fold<double>(0.0, (s, d) => s + d.netMilk);
-                final totalBillable = deliveries.fold<double>(0.0, (s, d) => s + d.billableMilk);
+                final totalMilk =
+                    deliveries.fold<double>(0.0, (s, d) => s + d.netMilk);
+                final totalBillable =
+                    deliveries.fold<double>(0.0, (s, d) => s + d.billableMilk);
                 final hasAdjustment = deliveries.any((d) => d.paneerAdjusted);
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -58,17 +60,22 @@ class DashboardScreen extends StatelessWidget {
                       const SizedBox(width: 12),
                       Expanded(
                         child: StatCard(
-                          label: hasAdjustment ? 'Billable (Adjusted)' : 'Billable',
+                          label: hasAdjustment
+                              ? 'Billable (Adjusted)'
+                              : 'Billable',
                           value: DateHelpers.formatWeight(totalBillable),
                           icon: Icons.check_circle_outline,
-                          color: hasAdjustment ? AppTheme.warning : AppTheme.success,
+                          color: hasAdjustment
+                              ? AppTheme.warning
+                              : AppTheme.success,
                         ),
                       ),
                     ]),
                     const SizedBox(height: 8),
                     StatCard(
                       label: 'Entries Today',
-                      value: '${deliveries.length} from ${deliveries.map((d) => d.milkmanId).toSet().length} milkmen',
+                      value:
+                          '${deliveries.length} from ${deliveries.map((d) => d.milkmanId).toSet().length} milkmen',
                       icon: Icons.local_shipping_outlined,
                     ),
                   ],
@@ -81,9 +88,10 @@ class DashboardScreen extends StatelessWidget {
               stream: db.watchRecentPaneerEntries(limit: 1),
               builder: (context, snap) {
                 final entries = snap.data ?? [];
-                final todayStart2 = DateTime(today.year, today.month, today.day);
+                final todayStart2 =
+                    DateTime(today.year, today.month, today.day);
                 final todayEntry = entries.isNotEmpty &&
-                    entries.first.entryDate.isAfter(todayStart2)
+                        entries.first.entryDate.isAfter(todayStart2)
                     ? entries.first
                     : null;
 
@@ -94,9 +102,11 @@ class DashboardScreen extends StatelessWidget {
                     if (todayEntry == null)
                       Card(
                         child: ListTile(
-                          leading: const Icon(Icons.scale_outlined, color: Colors.orange),
+                          leading: const Icon(Icons.scale_outlined,
+                              color: Colors.orange),
                           title: const Text('Paneer not entered yet'),
-                          subtitle: const Text('Go to Paneer tab to record today\'s yield'),
+                          subtitle: const Text(
+                              'Go to Paneer tab to record today\'s yield'),
                         ),
                       )
                     else ...[
@@ -104,7 +114,8 @@ class DashboardScreen extends StatelessWidget {
                         Expanded(
                           child: StatCard(
                             label: 'Expected',
-                            value: DateHelpers.formatWeight(todayEntry.expectedPaneer),
+                            value: DateHelpers.formatWeight(
+                                todayEntry.expectedPaneer),
                             icon: Icons.scale,
                             color: Colors.blue,
                           ),
@@ -113,7 +124,8 @@ class DashboardScreen extends StatelessWidget {
                         Expanded(
                           child: StatCard(
                             label: 'Actual',
-                            value: DateHelpers.formatWeight(todayEntry.actualPaneer),
+                            value: DateHelpers.formatWeight(
+                                todayEntry.actualPaneer),
                             icon: todayEntry.adjustmentApplied
                                 ? Icons.warning_amber
                                 : Icons.check_circle,
@@ -130,15 +142,18 @@ class DashboardScreen extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: AppTheme.warning.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: AppTheme.warning.withOpacity(0.4)),
+                            border: Border.all(
+                                color: AppTheme.warning.withOpacity(0.4)),
                           ),
                           child: Row(children: [
-                            Icon(Icons.info_outline, color: AppTheme.warning, size: 16),
+                            Icon(Icons.info_outline,
+                                color: AppTheme.warning, size: 16),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
                                 'Milk adjusted to ${DateHelpers.formatWeight(todayEntry.adjustedMilkTotal ?? 0)} (from ${DateHelpers.formatWeight(todayEntry.totalMilkUsed)})',
-                                style: TextStyle(color: AppTheme.warning, fontSize: 13),
+                                style: TextStyle(
+                                    color: AppTheme.warning, fontSize: 13),
                               ),
                             ),
                           ]),
@@ -194,13 +209,25 @@ class _WeekSummaryCardState extends State<_WeekSummaryCard> {
 
   Future<void> _load() async {
     if (!mounted) return;
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final provider = context.read<AppProvider>();
-      final summaries = await provider.calculateWeeklyPayments(widget.weekStart);
-      if (mounted) setState(() { _summaries = summaries; _loading = false; });
+      final summaries =
+          await provider.calculateWeeklyPayments(widget.weekStart);
+      if (mounted)
+        setState(() {
+          _summaries = summaries;
+          _loading = false;
+        });
     } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+      if (mounted)
+        setState(() {
+          _error = e.toString();
+          _loading = false;
+        });
     }
   }
 
@@ -220,7 +247,8 @@ class _WeekSummaryCardState extends State<_WeekSummaryCard> {
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(children: [
-            Text('Error: $_error', style: const TextStyle(color: Colors.red, fontSize: 12)),
+            Text('Error: $_error',
+                style: const TextStyle(color: Colors.red, fontSize: 12)),
             const SizedBox(height: 8),
             TextButton(onPressed: _load, child: const Text('Retry')),
           ]),
@@ -229,9 +257,11 @@ class _WeekSummaryCardState extends State<_WeekSummaryCard> {
     }
 
     final summaries = _summaries ?? [];
-    final totalPayable = summaries.fold<double>(0.0, (s, x) => s + x.netPayable);
+    final totalPayable =
+        summaries.fold<double>(0.0, (s, x) => s + x.netPayable);
     final totalMilk = summaries.fold<double>(0.0, (s, x) => s + x.totalMilkKg);
-    final totalLoans = summaries.fold<double>(0.0, (s, x) => s + x.totalLoanDeducted);
+    final totalLoans =
+        summaries.fold<double>(0.0, (s, x) => s + x.totalLoanDeducted);
 
     return Card(
       child: Padding(
@@ -242,7 +272,8 @@ class _WeekSummaryCardState extends State<_WeekSummaryCard> {
             Row(children: [
               Expanded(
                 child: Text(DateHelpers.formatWeekRange(widget.weekStart),
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 13)),
               ),
               InkWell(
                 onTap: _load,
@@ -250,12 +281,15 @@ class _WeekSummaryCardState extends State<_WeekSummaryCard> {
               ),
             ]),
             const SizedBox(height: 12),
-            _Row('Total Milk', DateHelpers.formatWeight(totalMilk), Icons.local_drink_outlined),
+            _Row('Total Milk', DateHelpers.formatWeight(totalMilk),
+                Icons.local_drink_outlined),
             _Row('Total Loans', DateHelpers.formatCurrency(totalLoans),
-                Icons.account_balance_wallet_outlined, color: AppTheme.warning),
+                Icons.account_balance_wallet_outlined,
+                color: AppTheme.warning),
             const Divider(),
             _Row('Total Payable', DateHelpers.formatCurrency(totalPayable),
-                Icons.payments_outlined, color: AppTheme.success, bold: true),
+                Icons.payments_outlined,
+                color: AppTheme.success, bold: true),
           ],
         ),
       ),
@@ -269,7 +303,8 @@ class _Row extends StatelessWidget {
   final IconData icon;
   final Color? color;
   final bool bold;
-  const _Row(this.label, this.value, this.icon, {this.color, this.bold = false});
+  const _Row(this.label, this.value, this.icon,
+      {this.color, this.bold = false});
 
   @override
   Widget build(BuildContext context) {
@@ -278,7 +313,9 @@ class _Row extends StatelessWidget {
       child: Row(children: [
         Icon(icon, size: 16, color: color ?? Colors.grey[600]),
         const SizedBox(width: 8),
-        Expanded(child: Text(label, style: TextStyle(color: Colors.grey[700], fontSize: 13))),
+        Expanded(
+            child: Text(label,
+                style: TextStyle(color: Colors.grey[700], fontSize: 13))),
         Text(value,
             style: TextStyle(
               fontWeight: bold ? FontWeight.bold : FontWeight.w500,

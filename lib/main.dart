@@ -86,15 +86,19 @@ class _MainShellState extends State<MainShell> {
             NavigationRail(
               extended: MediaQuery.of(context).size.width > 1100,
               selectedIndex: _selectedIndex,
-              onDestinationSelected: (i) =>
-                  setState(() => _selectedIndex = i),
+              onDestinationSelected: (i) => setState(() => _selectedIndex = i),
               leading: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 20),
                 child: Column(children: [
-                  const Icon(Icons.water_drop, color: Colors.white, size: 32),
+                  //const Icon(Icons.water_drop, color: Colors.white, size: 32),
+                  Container(
+                    width: 128,
+                    height: 128,
+                    child: Image.asset('assets/logo.png'),
+                  ),
                   const SizedBox(height: 4),
                   if (MediaQuery.of(context).size.width > 1100)
-                    const Text('Hisaab',
+                    const Text('DairyDues',
                         style: TextStyle(
                             color: Colors.white,
                             fontSize: 14,
