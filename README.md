@@ -1,112 +1,165 @@
-# 🥛 Hisaab — Dairy Manager (Firebase Edition)
+# 🐄 Galvix DairyDues
 
-Complete dairy financial management app using **Firebase Firestore** as the database.
-No SQLite, no build_runner, no code generation — just clean Flutter + Firebase.
+> A modern Flutter-based dairy business management application designed
+> to simplify daily accounting, payments, loans, and inventory tracking
+> for milk vendors and dairy operators.
 
----
+------------------------------------------------------------------------
 
-## 🚀 Setup (3 steps)
+## 🚀 Features
 
-### Step 1 — Install dependencies
-```bash
-cd dairy_app
+✨ **Dashboard Overview** - Daily summaries and financial insights -
+Quick navigation across modules
+
+🥛 **Daily Entry Management** - Record milk transactions and
+quantities - Automatic balance calculation
+
+👨‍🌾 **Party / Milkman Management** - Manage customers and suppliers -
+View transaction history per party
+
+💰 **Payments & Dues** - Record payments easily - Automatic outstanding
+balance tracking
+
+🧀 **Paneer Accounting** - Specialized accounting for paneer production
+and sales
+
+🏦 **Loan Tracking** - Create, monitor, and settle loans - Payment
+history management
+
+☁️ **Cloud Sync** - Firebase Firestore backend with real-time updates
+
+------------------------------------------------------------------------
+
+## 🛠️ Tech Stack
+
+| Layer \| Technology \|
+
+\|-------\|------------\| Frontend \| Flutter (Dart) \| \| Backend \|
+Firebase Firestore \| \| Platforms \| Android, Web, Windows \| \|
+Architecture \| Service-based Firestore integration \|
+
+------------------------------------------------------------------------
+
+## 📦 Project Structure
+
+    dairy_app/
+    │── lib/
+    │   ├── main.dart
+    │   ├── firebase_options.dart
+    │   ├── services/
+    │   ├── screens/
+    │   └── models/
+    │
+    │── android/
+    │── web/
+    │── windows/
+    │── firebase.json
+    │── firestore.indexes.json
+
+------------------------------------------------------------------------
+
+## ⚙️ Getting Started
+
+### 1️⃣ Clone Repository
+
+``` bash
+git clone https://github.com/yourusername/GalvixDairyDues.git
+cd GalvixDairyDues/dairy_app
+```
+
+### 2️⃣ Install Dependencies
+
+``` bash
 flutter pub get
 ```
 
-### Step 2 — Deploy Firestore indexes
-```bash
-firebase deploy --only firestore:indexes
-```
-> This sets up the compound query indexes Firestore needs.
-> If you don't have Firebase CLI: `npm install -g firebase-tools`
+### 3️⃣ Firebase Setup 🔥
 
-### Step 3 — Run
-```bash
-flutter run -d chrome     # Web
-flutter run               # Android tablet
-flutter build apk         # Release APK
-flutter build web         # Release web
+Install FlutterFire CLI:
+
+``` bash
+dart pub global activate flutterfire_cli
 ```
 
-**That's it. No build_runner. No generated files.**
+Configure Firebase:
 
----
-
-## 🔥 Firestore Structure
-
-```
-/milkmen/{id}
-  name, milkRate, khoyaRate, suppliesKhoya, isActive
-
-/deliveries/{id}
-  milkmanId, deliveryDate, grossWeight, canWeight,
-  netMilk, billableMilk, paneerAdjusted, notes
-
-/khoya/{id}
-  milkmanId, deliveryDate, weight, notes
-
-/paneer/{id}
-  entryDate, totalMilkUsed, expectedPaneer, actualPaneer,
-  yieldRatio, toleranceKg, adjustmentApplied, adjustedMilkTotal
-
-/loans/{id}
-  milkmanId, loanDate, amount, notes
-
-/weeklyPayments/{id}
-  milkmanId, weekStartDate, weekEndDate,
-  totalMilkKg, milkEarnings, totalKhoyaKg, khoyaEarnings,
-  totalEarnings, loanDeducted, carriedOverLoan,
-  netPayable, loanCarryForward, isPaid, paidAt
-
-/settings/{key}
-  value  (keys: paneer_yield_ratio, paneer_tolerance_kg)
+``` bash
+flutterfire configure
 ```
 
----
+Ensure the generated file exists:
 
-## ⚙️ Business Logic
+    lib/firebase_options.dart
 
-### Net Milk
-```
-Net Milk = Gross Weight − Empty Can Weight
-```
+### 4️⃣ Run the App
 
-### Paneer Validation
-```
-Expected = Total Milk × Yield Ratio
-Gap = Expected − Actual
-
-Gap ≤ 0.5 kg  →  No change, full milk billable
-Gap > 0.5 kg  →  Billable milk = Actual Paneer ÷ Yield Ratio
-                  (applied proportionally to all milkmen that day)
+``` bash
+flutter run
 ```
 
-### Weekly Payment (resets Monday)
+For specific platforms:
+
+``` bash
+flutter run -d chrome
+flutter run -d windows
 ```
-Earnings = (Billable Milk × Rate) + (Khoya × Khoya Rate)
-Net = Earnings − This Week Loans − Carried Over Loan
-If Net < 0 → Pay ₹0, carry the difference to next week
-```
 
----
+------------------------------------------------------------------------
 
-## ⚠️ Firestore Indexes
+## 📱 Core Workflows
 
-The app uses compound queries (filter by milkmanId + date range).
-Firestore requires indexes for these. Two ways to create them:
+### Daily Operations
 
-**Option A — Deploy from CLI (recommended):**
-```bash
+1.  Add milk delivery entries
+2.  Record payments
+3.  Track balances automatically
+4.  View dashboard insights
+
+### Financial Management
+
+-   Loan creation and settlement
+-   Paneer production accounting
+-   Party-wise ledger tracking
+
+------------------------------------------------------------------------
+
+## 🔐 Firestore Notes
+
+The app relies on compound indexes defined in:
+
+    firestore.indexes.json
+
+If queries fail, deploy indexes using:
+
+``` bash
 firebase deploy --only firestore:indexes
 ```
 
-**Option B — Let Firestore auto-create:**
-Run the app, and when a query fails, Firestore will show an error in the
-console with a direct link to create the missing index. Click it.
+------------------------------------------------------------------------
 
----
+## 🤝 Contributing
 
-## 📱 Platforms
-- ✅ Android tablet
-- ✅ Web (Chrome)
-- ✅ Windows desktop
+Contributions are welcome!
+
+1.  Fork the repository
+2.  Create a feature branch
+3.  Commit changes
+4.  Open a Pull Request
+
+------------------------------------------------------------------------
+
+## 📄 License
+
+This project is licensed under the MIT License --- feel free to use and
+modify.
+
+------------------------------------------------------------------------
+
+## 👨‍💻 Author
+
+**Galvix Technologies**\
+Building smart digital solutions for traditional businesses.
+
+------------------------------------------------------------------------
+
+⭐ If you like this project, consider giving it a star!
