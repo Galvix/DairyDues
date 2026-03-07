@@ -148,17 +148,9 @@ Contributions are welcome!
 
 ------------------------------------------------------------------------
 
-## 📄 License
-
-This project is licensed under the MIT License --- feel free to use and
-modify.
-
-------------------------------------------------------------------------
-
 ## 👨‍💻 Author
 
-**Galvix Technologies**\
-Building smart digital solutions for traditional businesses.
+**Galvix**
 
 ------------------------------------------------------------------------
 
