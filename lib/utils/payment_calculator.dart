@@ -71,18 +71,20 @@ class WeeklyPaymentSummary {
 
 class PaneerValidation {
   final double netMilkTotal;
-  final double yieldRatio;
-  final double expectedPaneer;
-  final double actualPaneer;
+  // samplePaneerKg: actual paneer weighed from the 24kg sample
+  // standardPaneerKg: expected paneer from that same sample (e.g. 6.5 kg)
+  final double samplePaneerKg;
+  final double standardPaneerKg;
+  final double effectiveRatio;   // samplePaneerKg / standardPaneerKg
   final double toleranceKg;
   final bool adjustmentNeeded;
   final double adjustedMilkTotal;
 
   const PaneerValidation({
     required this.netMilkTotal,
-    required this.yieldRatio,
-    required this.expectedPaneer,
-    required this.actualPaneer,
+    required this.samplePaneerKg,
+    required this.standardPaneerKg,
+    required this.effectiveRatio,
     required this.toleranceKg,
     required this.adjustmentNeeded,
     required this.adjustedMilkTotal,
@@ -90,28 +92,26 @@ class PaneerValidation {
 
   factory PaneerValidation.validate({
     required double netMilkTotal,
-    required double actualPaneer,
-    required double yieldRatio,
-    required double toleranceKg,
+    required double samplePaneerKg,
+    required double standardPaneerKg,
   }) {
-    final expectedPaneer = netMilkTotal * yieldRatio;
-    final gap = expectedPaneer - actualPaneer;
-    final adjustmentNeeded = gap > toleranceKg;
+    final effectiveRatio = samplePaneerKg / standardPaneerKg;
+    final adjustmentNeeded = samplePaneerKg < standardPaneerKg;
     final adjustedMilkTotal =
-        adjustmentNeeded ? (actualPaneer / yieldRatio) : netMilkTotal;
+        adjustmentNeeded ? netMilkTotal * effectiveRatio : netMilkTotal;
 
     return PaneerValidation(
       netMilkTotal: netMilkTotal,
-      yieldRatio: yieldRatio,
-      expectedPaneer: expectedPaneer,
-      actualPaneer: actualPaneer,
-      toleranceKg: toleranceKg,
+      samplePaneerKg: samplePaneerKg,
+      standardPaneerKg: standardPaneerKg,
+      effectiveRatio: effectiveRatio,
+      toleranceKg: 0,
       adjustmentNeeded: adjustmentNeeded,
       adjustedMilkTotal: adjustedMilkTotal,
     );
   }
 
-  double get gap => expectedPaneer - actualPaneer;
+  double get gap => standardPaneerKg - samplePaneerKg;
   double get milkReduction => netMilkTotal - adjustedMilkTotal;
 }
 
@@ -135,5 +135,5 @@ class DateHelpers {
   static String formatWeight(double kg) => '${kg.toStringAsFixed(2)} kg';
 
   static String formatCurrency(double amount) =>
-      '₹${NumberFormat('#,##,##0.00').format(amount)}';
+      NumberFormat('#,##,##0.00').format(amount);
 }

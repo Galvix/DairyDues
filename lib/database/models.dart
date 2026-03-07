@@ -141,6 +141,7 @@ class KhoyaDelivery {
 
 class PaneerEntry {
   final String id;
+  final String? milkmanId;  // null for old daily-level entries
   final DateTime entryDate;
   final double totalMilkUsed;
   final double expectedPaneer;
@@ -152,6 +153,7 @@ class PaneerEntry {
 
   PaneerEntry({
     required this.id,
+    this.milkmanId,
     required this.entryDate,
     required this.totalMilkUsed,
     required this.expectedPaneer,
@@ -165,17 +167,19 @@ class PaneerEntry {
   factory PaneerEntry.fromFirestore(String id, Map<String, dynamic> d) =>
       PaneerEntry(
         id: id,
+        milkmanId: d['milkmanId'] as String?,
         entryDate: _toDateTime(d['entryDate']),
         totalMilkUsed: (d['totalMilkUsed'] ?? 0).toDouble(),
         expectedPaneer: (d['expectedPaneer'] ?? 0).toDouble(),
         actualPaneer: (d['actualPaneer'] ?? 0).toDouble(),
-        yieldRatio: (d['yieldRatio'] ?? 0.18).toDouble(),
-        toleranceKg: (d['toleranceKg'] ?? 0.5).toDouble(),
+        yieldRatio: (d['yieldRatio'] ?? 1.0).toDouble(),
+        toleranceKg: (d['toleranceKg'] ?? 0).toDouble(),
         adjustmentApplied: d['adjustmentApplied'] ?? false,
         adjustedMilkTotal: d['adjustedMilkTotal']?.toDouble(),
       );
 
   Map<String, dynamic> toMap() => {
+        if (milkmanId != null) 'milkmanId': milkmanId,
         'entryDate': Timestamp.fromDate(entryDate),
         'totalMilkUsed': totalMilkUsed,
         'expectedPaneer': expectedPaneer,

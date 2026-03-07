@@ -15,13 +15,23 @@ class FirestoreService {
 
   // ─── SETTINGS ─────────────────────────────────────────────────────────────
 
-  Future<double> getYieldRatio() async {
+  Future<double> getStandardPaneerKg() async {
     try {
-      final doc = await _settings.doc('paneer_yield_ratio').get();
-      if (!doc.exists) return 0.18;
-      return ((doc.data() as Map)['value'] ?? 0.18).toDouble();
+      final doc = await _settings.doc('standard_paneer_kg').get();
+      if (!doc.exists) return 6.5;
+      return ((doc.data() as Map)['value'] ?? 6.5).toDouble();
     } catch (_) {
-      return 0.18;
+      return 6.5;
+    }
+  }
+
+  Future<double> getSampleMilkKg() async {
+    try {
+      final doc = await _settings.doc('sample_milk_kg').get();
+      if (!doc.exists) return 24.0;
+      return ((doc.data() as Map)['value'] ?? 24.0).toDouble();
+    } catch (_) {
+      return 24.0;
     }
   }
 
@@ -167,7 +177,7 @@ class FirestoreService {
             .toList());
   }
 
-  Future<double> getTotalKhoyaForWeek(
+  Future<List<KhoyaDelivery>> getKhoyaDeliveriesForWeek(
       String milkmanId, DateTime weekStart) async {
     final end = weekStart.add(const Duration(days: 7));
     final snap = await _khoya.where('milkmanId', isEqualTo: milkmanId).get();
@@ -177,24 +187,45 @@ class FirestoreService {
         .where((k) =>
             !k.deliveryDate.isBefore(weekStart) &&
             k.deliveryDate.isBefore(end))
-        .fold<double>(0.0, (s, k) => s + k.weight);
+        .toList();
+  }
+
+  Future<double> getTotalKhoyaForWeek(
+      String milkmanId, DateTime weekStart) async {
+    final list = await getKhoyaDeliveriesForWeek(milkmanId, weekStart);
+    return list.fold<double>(0.0, (s, k) => s + k.weight);
   }
 
   // ─── PANEER ───────────────────────────────────────────────────────────────
 
   Future<void> addPaneerEntry(PaneerEntry p) => _paneer.add(p.toMap());
 
-  Future<PaneerEntry?> getPaneerEntryForDate(DateTime date) async {
+  Future<PaneerEntry?> getPaneerEntryForDateAndMilkman(
+      DateTime date, String milkmanId) async {
     final start = DateTime(date.year, date.month, date.day);
     final end = start.add(const Duration(days: 1));
     final snap = await _paneer
         .where('entryDate', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
         .where('entryDate', isLessThan: Timestamp.fromDate(end))
+        .where('milkmanId', isEqualTo: milkmanId)
         .limit(1)
         .get();
     if (snap.docs.isEmpty) return null;
     return PaneerEntry.fromFirestore(
         snap.docs.first.id, snap.docs.first.data() as Map<String, dynamic>);
+  }
+
+  Stream<List<PaneerEntry>> watchPaneerEntriesForDate(DateTime date) {
+    final start = DateTime(date.year, date.month, date.day);
+    final end = start.add(const Duration(days: 1));
+    return _paneer
+        .where('entryDate', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+        .where('entryDate', isLessThan: Timestamp.fromDate(end))
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((d) => PaneerEntry.fromFirestore(
+                d.id, d.data() as Map<String, dynamic>))
+            .toList());
   }
 
   Stream<List<PaneerEntry>> watchRecentPaneerEntries({int limit = 30}) {
@@ -206,6 +237,21 @@ class FirestoreService {
             .map((d) => PaneerEntry.fromFirestore(
                 d.id, d.data() as Map<String, dynamic>))
             .toList());
+  }
+
+  Future<void> applyPaneerAdjustmentForMilkman(
+      DateTime date, String milkmanId, double effectiveRatio) async {
+    final deliveries = await getAllDeliveriesForDate(date);
+    final myDeliveries =
+        deliveries.where((d) => d.milkmanId == milkmanId).toList();
+    final batch = _db.batch();
+    for (final d in myDeliveries) {
+      batch.update(_deliveries.doc(d.id), {
+        'billableMilk': d.netMilk * effectiveRatio,
+        'paneerAdjusted': true,
+      });
+    }
+    await batch.commit();
   }
 
   // ─── LOANS ────────────────────────────────────────────────────────────────

@@ -13,22 +13,22 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  late TextEditingController _yieldCtrl;
-  late TextEditingController _toleranceCtrl;
+  late TextEditingController _sampleMilkCtrl;
+  late TextEditingController _standardPaneerCtrl;
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
     final p = context.read<AppProvider>();
-    _yieldCtrl = TextEditingController(text: p.yieldRatio.toString());
-    _toleranceCtrl = TextEditingController(text: p.toleranceKg.toString());
+    _sampleMilkCtrl = TextEditingController(text: p.sampleMilkKg.toString());
+    _standardPaneerCtrl = TextEditingController(text: p.standardPaneerKg.toString());
   }
 
   @override
   void dispose() {
-    _yieldCtrl.dispose();
-    _toleranceCtrl.dispose();
+    _sampleMilkCtrl.dispose();
+    _standardPaneerCtrl.dispose();
     super.dispose();
   }
 
@@ -52,25 +52,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     style: TextStyle(color: Colors.grey[600], fontSize: 13)),
                 const SizedBox(height: 16),
                 TextFormField(
-                  controller: _yieldCtrl,
-                  decoration: InputDecoration(
-                    labelText: 'Yield Ratio',
-                    helperText: 'Current: ${(provider.yieldRatio * 100).toStringAsFixed(1)}% — e.g. 0.18 = 180g paneer per kg milk',
-                    suffixText: 'ratio',
-                  ),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,4}'))],
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _toleranceCtrl,
+                  controller: _sampleMilkCtrl,
                   decoration: const InputDecoration(
-                    labelText: 'Tolerance (kg)',
-                    helperText: 'Max gap allowed before milk is reduced',
+                    labelText: 'Sample Milk Size (kg)',
+                    helperText: 'Fixed amount of milk taken as sample each day',
                     suffixText: 'kg',
                   ),
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _standardPaneerCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'Standard Paneer from Sample (kg)',
+                    helperText:
+                        'Expected paneer from ${provider.sampleMilkKg.toStringAsFixed(0)} kg milk — e.g. 6.5 kg',
+                    suffixText: 'kg',
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,3}'))],
                 ),
                 const SizedBox(height: 16),
                 SizedBox(
@@ -99,10 +100,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
                 ]),
                 const SizedBox(height: 10),
-                _Bullet('Expected paneer = Total milk × Yield ratio'),
-                _Bullet('If gap ≤ tolerance → full milk billable, no change'),
-                _Bullet('If gap > tolerance → billable milk = Actual paneer ÷ Ratio'),
-                _Bullet('Reduction shared proportionally across all milkmen that day'),
+                _Bullet('A sample (e.g. 24 kg) is taken from each milkman\'s milk and paneer is weighed'),
+                _Bullet('Effective ratio = sample paneer ÷ standard paneer (e.g. 6.33 ÷ 6.5)'),
+                _Bullet('If sample < standard → billable milk = netMilk × ratio (milk reduced)'),
+                _Bullet('If sample ≥ standard → full milk billable, no change'),
               ]),
             ),
           ),
@@ -120,26 +121,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _save() async {
-    final ratio = double.tryParse(_yieldCtrl.text);
-    final tolerance = double.tryParse(_toleranceCtrl.text);
+    final sampleMilk = double.tryParse(_sampleMilkCtrl.text);
+    final standardPaneer = double.tryParse(_standardPaneerCtrl.text);
 
-    if (ratio == null || ratio <= 0 || ratio >= 1) {
+    if (sampleMilk == null || sampleMilk <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Yield ratio must be between 0 and 1 (e.g. 0.18)')),
+        const SnackBar(content: Text('Sample milk size must be greater than 0')),
       );
       return;
     }
-    if (tolerance == null || tolerance < 0) {
+    if (standardPaneer == null || standardPaneer <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tolerance must be 0 or more')),
+        const SnackBar(content: Text('Standard paneer must be greater than 0')),
       );
       return;
     }
 
     setState(() => _saving = true);
     final p = context.read<AppProvider>();
-    await p.updateYieldRatio(ratio);
-    await p.updateToleranceKg(tolerance);
+    await p.updateSampleMilkKg(sampleMilk);
+    await p.updateStandardPaneerKg(standardPaneer);
     setState(() => _saving = false);
 
     if (mounted) {

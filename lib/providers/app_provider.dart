@@ -12,11 +12,11 @@ class AppProvider extends ChangeNotifier {
   DateTime _selectedDate = DateTime.now();
   DateTime get selectedDate => _selectedDate;
 
-  double _yieldRatio = 0.18;
-  double _toleranceKg = 0.5;
+  double _standardPaneerKg = 6.5;  // expected paneer from a 24kg sample
+  double _sampleMilkKg = 24.0;     // the fixed sample size
 
-  double get yieldRatio => _yieldRatio;
-  double get toleranceKg => _toleranceKg;
+  double get standardPaneerKg => _standardPaneerKg;
+  double get sampleMilkKg => _sampleMilkKg;
 
   void setSelectedDate(DateTime date) {
     _selectedDate = date;
@@ -26,20 +26,20 @@ class AppProvider extends ChangeNotifier {
   DateTime get currentWeekStart => DateHelpers.getWeekStart(DateTime.now());
 
   Future<void> loadSettings() async {
-    _yieldRatio = await db.getYieldRatio();
-    _toleranceKg = await db.getToleranceKg();
+    _standardPaneerKg = await db.getStandardPaneerKg();
+    _sampleMilkKg = await db.getSampleMilkKg();
     notifyListeners();
   }
 
-  Future<void> updateYieldRatio(double value) async {
-    await db.setSetting('paneer_yield_ratio', value);
-    _yieldRatio = value;
+  Future<void> updateStandardPaneerKg(double value) async {
+    await db.setSetting('standard_paneer_kg', value);
+    _standardPaneerKg = value;
     notifyListeners();
   }
 
-  Future<void> updateToleranceKg(double value) async {
-    await db.setSetting('paneer_tolerance_kg', value);
-    _toleranceKg = value;
+  Future<void> updateSampleMilkKg(double value) async {
+    await db.setSetting('sample_milk_kg', value);
+    _sampleMilkKg = value;
     notifyListeners();
   }
 
@@ -67,36 +67,39 @@ class AppProvider extends ChangeNotifier {
 
   // ─── PANEER VALIDATION ────────────────────────────────────────────────────
 
-  Future<PaneerValidation> validateAndSavePaneer({
+  Future<PaneerValidation> validateAndSavePaneerForMilkman({
     required DateTime date,
-    required double actualPaneer,
+    required String milkmanId,
+    required double samplePaneerKg,
   }) async {
     final deliveries = await db.getAllDeliveriesForDate(date);
-    final totalMilk =
-        deliveries.fold<double>(0.0, (s, d) => s + d.netMilk);
+    final milkmanMilk = deliveries
+        .where((d) => d.milkmanId == milkmanId)
+        .fold<double>(0.0, (s, d) => s + d.netMilk);
 
     final validation = PaneerValidation.validate(
-      netMilkTotal: totalMilk,
-      actualPaneer: actualPaneer,
-      yieldRatio: _yieldRatio,
-      toleranceKg: _toleranceKg,
+      netMilkTotal: milkmanMilk,
+      samplePaneerKg: samplePaneerKg,
+      standardPaneerKg: _standardPaneerKg,
     );
 
     await db.addPaneerEntry(PaneerEntry(
       id: '',
+      milkmanId: milkmanId,
       entryDate: date,
-      totalMilkUsed: totalMilk,
-      expectedPaneer: validation.expectedPaneer,
-      actualPaneer: actualPaneer,
-      yieldRatio: _yieldRatio,
-      toleranceKg: _toleranceKg,
+      totalMilkUsed: milkmanMilk,
+      expectedPaneer: _standardPaneerKg,
+      actualPaneer: samplePaneerKg,
+      yieldRatio: validation.effectiveRatio,
+      toleranceKg: 0,
       adjustmentApplied: validation.adjustmentNeeded,
       adjustedMilkTotal:
           validation.adjustmentNeeded ? validation.adjustedMilkTotal : null,
     ));
 
     if (validation.adjustmentNeeded) {
-      await db.applyPaneerAdjustment(date, validation.adjustedMilkTotal);
+      await db.applyPaneerAdjustmentForMilkman(
+          date, milkmanId, validation.effectiveRatio);
     }
 
     return validation;

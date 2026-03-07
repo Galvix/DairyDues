@@ -16,15 +16,7 @@ class PaneerScreen extends StatefulWidget {
 }
 
 class _PaneerScreenState extends State<PaneerScreen> {
-  final _actualCtrl = TextEditingController();
   DateTime _date = DateTime.now();
-  bool _saving = false;
-
-  @override
-  void dispose() {
-    _actualCtrl.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -51,246 +43,603 @@ class _PaneerScreenState extends State<PaneerScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // Milk summary for the day
-          StreamBuilder<List<MilkDelivery>>(
-            stream: db.watchDeliveriesForDate(dateOnly),
-            builder: (context, snap) {
-              final deliveries = snap.data ?? [];
-              final totalMilk = deliveries.fold<double>(0.0, (s, d) => s + d.netMilk);
-              final expectedPaneer = totalMilk * provider.yieldRatio;
+      body: StreamBuilder<List<MilkDelivery>>(
+        stream: db.watchDeliveriesForDate(dateOnly),
+        builder: (context, delivSnap) {
+          final deliveries = delivSnap.data ?? [];
+          final totalMilk = deliveries.fold<double>(0.0, (s, d) => s + d.netMilk);
 
-              return Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Milk Summary — ${DateFormat('dd MMM yyyy').format(_date)}',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                    const SizedBox(height: 12),
-                    _InfoRow('Total milk received', '${totalMilk.toStringAsFixed(2)} kg'),
-                    _InfoRow('Yield ratio', '${(provider.yieldRatio * 100).toStringAsFixed(1)}%'),
-                    _InfoRow('Expected paneer', '${expectedPaneer.toStringAsFixed(2)} kg'),
-                    _InfoRow('Tolerance', '±${provider.toleranceKg} kg'),
-                    if (deliveries.isEmpty)
-                      Container(
-                        margin: const EdgeInsets.only(top: 8),
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
+          // Group net milk by milkman
+          final Map<String, double> milkPerMan = {};
+          for (final d in deliveries) {
+            milkPerMan[d.milkmanId] = (milkPerMan[d.milkmanId] ?? 0) + d.netMilk;
+          }
+
+          return StreamBuilder<List<Milkman>>(
+            stream: db.watchActiveMilkmen(),
+            builder: (context, milkmenSnap) {
+              final milkmanMap = {
+                for (final m in (milkmenSnap.data ?? [])) m.id: m
+              };
+
+              return StreamBuilder<List<PaneerEntry>>(
+                stream: db.watchPaneerEntriesForDate(dateOnly),
+                builder: (context, paneerSnap) {
+                  final paneerByMilkman = <String, PaneerEntry>{};
+                  for (final e in (paneerSnap.data ?? [])) {
+                    if (e.milkmanId != null) paneerByMilkman[e.milkmanId!] = e;
+                  }
+
+                  final doneCount = paneerByMilkman.length;
+                  final total = milkPerMan.length;
+
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // ── Summary ──────────────────────────────────────
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(14),
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    DateFormat('dd MMM yyyy').format(_date),
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(children: [
+                                    _StatusChip(
+                                      '${totalMilk.toStringAsFixed(1)} kg total',
+                                      Colors.blue,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    _StatusChip(
+                                      '$doneCount / $total done',
+                                      doneCount == total && total > 0
+                                          ? AppTheme.success
+                                          : AppTheme.warning,
+                                    ),
+                                  ]),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Standard: ${provider.sampleMilkKg.toStringAsFixed(0)} kg milk → ${provider.standardPaneerKg.toStringAsFixed(2)} kg paneer',
+                                    style: TextStyle(
+                                        fontSize: 12, color: Colors.grey[600]),
+                                  ),
+                                ]),
+                          ),
                         ),
-                        child: const Row(children: [
-                          Icon(Icons.warning_amber_outlined, color: Colors.orange, size: 16),
-                          SizedBox(width: 8),
-                          Text('No milk entries for this date',
-                              style: TextStyle(color: Colors.orange, fontSize: 13)),
-                        ]),
+                        const SizedBox(height: 12),
+
+                        // ── Milkman list ──────────────────────────────────
+                        if (milkPerMan.isEmpty)
+                          Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 48),
+                              child: Column(children: [
+                                Icon(Icons.local_drink_outlined,
+                                    size: 56, color: Colors.grey[300]),
+                                const SizedBox(height: 12),
+                                Text('No milk entries for this date',
+                                    style: TextStyle(color: Colors.grey[500])),
+                              ]),
+                            ),
+                          )
+                        else ...[
+                          const SectionHeader(title: 'MILKMEN'),
+                          const SizedBox(height: 8),
+                          ...milkPerMan.entries.map((entry) {
+                            final milkman = milkmanMap[entry.key];
+                            final paneerEntry = paneerByMilkman[entry.key];
+                            return _MilkmanPaneerCard(
+                              milkmanName: milkman?.name ?? '?',
+                              netMilk: entry.value,
+                              paneerEntry: paneerEntry,
+                              standardPaneerKg: provider.standardPaneerKg,
+                              onTap: paneerEntry == null
+                                  ? () => _enterPaneerFor(
+                                        context,
+                                        milkman?.name ?? '?',
+                                        entry.key,
+                                        entry.value,
+                                        dateOnly,
+                                      )
+                                  : null,
+                            );
+                          }),
+                        ],
+
+                        const SizedBox(height: 16),
+                        const SectionHeader(title: 'RECENT HISTORY'),
+                        const SizedBox(height: 8),
+                        StreamBuilder<List<PaneerEntry>>(
+                          stream: db.watchRecentPaneerEntries(limit: 20),
+                          builder: (context, snap) {
+                            final entries = (snap.data ?? [])
+                                .where((e) => e.milkmanId != null)
+                                .toList();
+                            if (entries.isEmpty) {
+                              return Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16),
+                                child: Text('No history yet',
+                                    style:
+                                        TextStyle(color: Colors.grey[500])),
+                              );
+                            }
+                            return Column(
+                              children: entries
+                                  .map((e) => Card(
+                                        margin:
+                                            const EdgeInsets.only(bottom: 8),
+                                        child: ListTile(
+                                          leading: Icon(
+                                            e.adjustmentApplied
+                                                ? Icons.warning_amber_outlined
+                                                : Icons.check_circle_outline,
+                                            color: e.adjustmentApplied
+                                                ? AppTheme.warning
+                                                : AppTheme.success,
+                                          ),
+                                          title: Text(
+                                            '${milkmanMap[e.milkmanId]?.name ?? e.milkmanId ?? '?'}  —  ${DateFormat('dd MMM yyyy').format(e.entryDate)}',
+                                          ),
+                                          subtitle: Text(
+                                            'Milk: ${e.totalMilkUsed.toStringAsFixed(1)} kg  •  Sample: ${e.actualPaneer.toStringAsFixed(3)} / ${e.expectedPaneer.toStringAsFixed(2)} kg',
+                                          ),
+                                          trailing: e.adjustmentApplied
+                                              ? Chip(
+                                                  label: Text('Adjusted',
+                                                      style: TextStyle(
+                                                          fontSize: 11,
+                                                          color: AppTheme
+                                                              .warning)),
+                                                  backgroundColor:
+                                                      AppTheme.warning
+                                                          .withOpacity(0.1),
+                                                )
+                                              : null,
+                                        ),
+                                      ))
+                                  .toList(),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _enterPaneerFor(
+    BuildContext context,
+    String milkmanName,
+    String milkmanId,
+    double netMilk,
+    DateTime date,
+  ) async {
+    final provider = context.read<AppProvider>();
+    final result = await showModalBottomSheet<PaneerValidation>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => ChangeNotifierProvider.value(
+        value: provider,
+        child: _PaneerEntrySheet(
+          milkmanName: milkmanName,
+          milkmanId: milkmanId,
+          netMilk: netMilk,
+          date: date,
+        ),
+      ),
+    );
+
+    if (result != null && mounted) {
+      _showResult(context, milkmanName, result);
+    }
+  }
+
+  void _showResult(
+      BuildContext context, String milkmanName, PaneerValidation v) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(children: [
+          Icon(
+            v.adjustmentNeeded ? Icons.warning_amber : Icons.check_circle,
+            color: v.adjustmentNeeded ? AppTheme.warning : AppTheme.success,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+              child: Text(milkmanName, overflow: TextOverflow.ellipsis)),
+        ]),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (v.adjustmentNeeded) ...[
+            _ResultBanner('Milk has been reduced', AppTheme.warning),
+            const SizedBox(height: 12),
+            _InfoRow('Original milk',
+                '${v.netMilkTotal.toStringAsFixed(2)} kg'),
+            _InfoRow(
+              'Adjusted milk',
+              '${v.adjustedMilkTotal.toStringAsFixed(2)} kg',
+              valueColor: AppTheme.warning,
+            ),
+            _InfoRow(
+              'Reduction',
+              '−${v.milkReduction.toStringAsFixed(2)} kg',
+              valueColor: Colors.red[400]!,
+            ),
+            const Divider(height: 16),
+            _InfoRow('Sample paneer',
+                '${v.samplePaneerKg.toStringAsFixed(3)} kg'),
+            _InfoRow('Standard',
+                '${v.standardPaneerKg.toStringAsFixed(2)} kg'),
+            _InfoRow('Ratio',
+                '${(v.effectiveRatio * 100).toStringAsFixed(2)}%'),
+          ] else ...[
+            _ResultBanner('No adjustment needed', AppTheme.success),
+            const SizedBox(height: 12),
+            _InfoRow('Sample paneer',
+                '${v.samplePaneerKg.toStringAsFixed(3)} kg'),
+            _InfoRow('Standard',
+                '${v.standardPaneerKg.toStringAsFixed(2)} kg'),
+            _InfoRow('Net milk',
+                '${v.netMilkTotal.toStringAsFixed(2)} kg (unchanged)'),
+          ],
+        ]),
+        actions: [
+          ElevatedButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'))
+        ],
+      ),
+    );
+  }
+}
+
+// ── Milkman paneer card ──────────────────────────────────────────────────────
+
+class _MilkmanPaneerCard extends StatelessWidget {
+  final String milkmanName;
+  final double netMilk;
+  final PaneerEntry? paneerEntry;
+  final double standardPaneerKg;
+  final VoidCallback? onTap;
+
+  const _MilkmanPaneerCard({
+    required this.milkmanName,
+    required this.netMilk,
+    required this.paneerEntry,
+    required this.standardPaneerKg,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final done = paneerEntry != null;
+    final adjusted = done && paneerEntry!.adjustmentApplied;
+    final avatarColor =
+        done ? (adjusted ? AppTheme.warning : AppTheme.success) : AppTheme.primary;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(children: [
+            CircleAvatar(
+              radius: 22,
+              backgroundColor: avatarColor.withOpacity(0.12),
+              child: Text(
+                milkmanName.isNotEmpty ? milkmanName[0].toUpperCase() : '?',
+                style: TextStyle(
+                    color: avatarColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(milkmanName,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 15)),
+                    const SizedBox(height: 3),
+                    Text('Net milk: ${netMilk.toStringAsFixed(2)} kg',
+                        style: TextStyle(
+                            color: Colors.grey[600], fontSize: 13)),
+                    if (done) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Sample: ${paneerEntry!.actualPaneer.toStringAsFixed(3)} / ${standardPaneerKg.toStringAsFixed(2)} kg  •  ${(paneerEntry!.yieldRatio * 100).toStringAsFixed(2)}%',
+                        style:
+                            TextStyle(fontSize: 12, color: Colors.grey[500]),
                       ),
-                    // Live preview
-                    if (double.tryParse(_actualCtrl.text) != null && totalMilk > 0) ...[
-                      const SizedBox(height: 12),
-                      Builder(builder: (_) {
-                        final v = PaneerValidation.validate(
-                          netMilkTotal: totalMilk,
-                          actualPaneer: double.parse(_actualCtrl.text),
-                          yieldRatio: provider.yieldRatio,
-                          toleranceKg: provider.toleranceKg,
-                        );
-                        return _ValidationBanner(v: v);
-                      }),
+                      if (adjusted)
+                        Text(
+                          'Adjusted → ${(paneerEntry!.adjustedMilkTotal ?? 0).toStringAsFixed(2)} kg',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.warning,
+                              fontWeight: FontWeight.w500),
+                        ),
                     ],
                   ]),
+            ),
+            const SizedBox(width: 8),
+            if (done)
+              Icon(
+                adjusted ? Icons.warning_amber : Icons.check_circle,
+                color: adjusted ? AppTheme.warning : AppTheme.success,
+              )
+            else
+              Icon(Icons.chevron_right, color: Colors.grey[400]),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Paneer entry bottom sheet ────────────────────────────────────────────────
+
+class _PaneerEntrySheet extends StatefulWidget {
+  final String milkmanName;
+  final String milkmanId;
+  final double netMilk;
+  final DateTime date;
+
+  const _PaneerEntrySheet({
+    required this.milkmanName,
+    required this.milkmanId,
+    required this.netMilk,
+    required this.date,
+  });
+
+  @override
+  State<_PaneerEntrySheet> createState() => _PaneerEntrySheetState();
+}
+
+class _PaneerEntrySheetState extends State<_PaneerEntrySheet> {
+  final _formKey = GlobalKey<FormState>();
+  final _sampleCtrl = TextEditingController();
+  bool _saving = false;
+
+  double? get _sample => double.tryParse(_sampleCtrl.text);
+
+  @override
+  void dispose() {
+    _sampleCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<AppProvider>();
+    final standardPaneerKg = provider.standardPaneerKg;
+    final sampleMilkKg = provider.sampleMilkKg;
+    final sample = _sample;
+
+    PaneerValidation? preview;
+    if (sample != null) {
+      preview = PaneerValidation.validate(
+        netMilkTotal: widget.netMilk,
+        samplePaneerKg: sample,
+        standardPaneerKg: standardPaneerKg,
+      );
+    }
+
+    return Padding(
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        child: Form(
+          key: _formKey,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            // Header
+            Row(children: [
+              CircleAvatar(
+                backgroundColor: AppTheme.primary.withOpacity(0.12),
+                child: Text(
+                  widget.milkmanName.isNotEmpty
+                      ? widget.milkmanName[0].toUpperCase()
+                      : '?',
+                  style: const TextStyle(
+                      color: AppTheme.primary, fontWeight: FontWeight.bold),
                 ),
-              );
-            },
-          ),
-          const SizedBox(height: 16),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(widget.milkmanName,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 16)),
+                      Text('Net milk: ${widget.netMilk.toStringAsFixed(2)} kg',
+                          style: TextStyle(
+                              color: Colors.grey[600], fontSize: 13)),
+                    ]),
+              ),
+              IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context)),
+            ]),
+            const SizedBox(height: 14),
 
-          // Entry or already-done
-          FutureBuilder<PaneerEntry?>(
-            future: db.getPaneerEntryForDate(dateOnly),
-            builder: (context, snap) {
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              final existing = snap.data;
-              if (existing != null) return _DoneCard(entry: existing);
+            // Standard info
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(children: [
+                const Icon(Icons.science_outlined,
+                    size: 16, color: Colors.blue),
+                const SizedBox(width: 8),
+                Text(
+                  'Standard: ${sampleMilkKg.toStringAsFixed(0)} kg milk → ${standardPaneerKg.toStringAsFixed(2)} kg paneer',
+                  style: const TextStyle(fontSize: 13, color: Colors.blue),
+                ),
+              ]),
+            ),
+            const SizedBox(height: 14),
 
-              return Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    const Text('Enter Actual Paneer',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                    const SizedBox(height: 12),
-                    StatefulBuilder(
-                      builder: (_, set) => TextFormField(
-                        controller: _actualCtrl,
-                        decoration: const InputDecoration(
-                            labelText: 'Actual Paneer Weight (kg)', suffixText: 'kg'),
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,3}'))],
-                        onChanged: (_) => setState(() {}),
+            // Input — setState here only rebuilds the sheet, not the parent
+            TextFormField(
+              controller: _sampleCtrl,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText:
+                    'Sample Paneer (from ${sampleMilkKg.toStringAsFixed(0)} kg milk)',
+                suffixText: 'kg',
+              ),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,3}'))
+              ],
+              onChanged: (_) => setState(() {}),
+              validator: (v) =>
+                  double.tryParse(v ?? '') == null ? 'Enter a valid weight' : null,
+            ),
+
+            // Live preview (inside sheet only — no parent rebuild)
+            if (preview != null) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    vertical: 8, horizontal: 12),
+                decoration: BoxDecoration(
+                  color: (preview.adjustmentNeeded
+                          ? AppTheme.warning
+                          : AppTheme.success)
+                      .withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(children: [
+                  Icon(
+                    preview.adjustmentNeeded
+                        ? Icons.warning_amber_outlined
+                        : Icons.check_circle_outline,
+                    color: preview.adjustmentNeeded
+                        ? AppTheme.warning
+                        : AppTheme.success,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      preview.adjustmentNeeded
+                          ? '${widget.netMilk.toStringAsFixed(2)} → ${preview.adjustedMilkTotal.toStringAsFixed(2)} kg  (−${preview.milkReduction.toStringAsFixed(2)} kg)'
+                          : 'No adjustment — milk stays ${widget.netMilk.toStringAsFixed(2)} kg',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: preview.adjustmentNeeded
+                            ? AppTheme.warning
+                            : AppTheme.success,
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: _saving ? null : _save,
-                        icon: const Icon(Icons.check),
-                        label: _saving
-                            ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                            : const Text('Confirm & Save'),
-                      ),
-                    ),
-                  ]),
-                ),
-              );
-            },
-          ),
+                  ),
+                ]),
+              ),
+            ],
+            const SizedBox(height: 16),
 
-          const SizedBox(height: 16),
-          const SectionHeader(title: 'RECENT HISTORY'),
-          StreamBuilder<List<PaneerEntry>>(
-            stream: db.watchRecentPaneerEntries(limit: 15),
-            builder: (context, snap) {
-              final entries = snap.data ?? [];
-              return Column(
-                children: entries
-                    .map((e) => Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            leading: Icon(
-                              e.adjustmentApplied ? Icons.warning_amber_outlined : Icons.check_circle_outline,
-                              color: e.adjustmentApplied ? AppTheme.warning : AppTheme.success,
-                            ),
-                            title: Text(DateFormat('dd MMM yyyy').format(e.entryDate)),
-                            subtitle: Text(
-                                'Milk: ${e.totalMilkUsed.toStringAsFixed(1)} kg  •  Paneer: ${e.actualPaneer.toStringAsFixed(1)} kg'),
-                            trailing: e.adjustmentApplied
-                                ? Chip(
-                                    label: Text('Adjusted',
-                                        style: TextStyle(fontSize: 11, color: AppTheme.warning)),
-                                    backgroundColor: AppTheme.warning.withOpacity(0.1),
-                                  )
-                                : null,
-                          ),
-                        ))
-                    .toList(),
-              );
-            },
-          ),
-        ]),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _saving ? null : _save,
+                icon: const Icon(Icons.check),
+                label: _saving
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Text('Apply'),
+              ),
+            ),
+          ]),
+        ),
       ),
     );
   }
 
   Future<void> _save() async {
-    final actual = double.tryParse(_actualCtrl.text);
-    if (actual == null) return;
+    if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
 
-    final date = DateTime(_date.year, _date.month, _date.day);
-    final v = await context.read<AppProvider>().validateAndSavePaneer(
-        date: date, actualPaneer: actual);
-    if (!mounted) return;
-    setState(() => _saving = false);
-    _actualCtrl.clear();
+    final v = await context.read<AppProvider>().validateAndSavePaneerForMilkman(
+          date: widget.date,
+          milkmanId: widget.milkmanId,
+          samplePaneerKg: double.parse(_sampleCtrl.text),
+        );
 
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Row(children: [
-          Icon(v.adjustmentNeeded ? Icons.warning_amber : Icons.check_circle,
-              color: v.adjustmentNeeded ? AppTheme.warning : AppTheme.success),
-          const SizedBox(width: 8),
-          Text(v.adjustmentNeeded ? 'Adjustment Applied' : 'Within Tolerance'),
-        ]),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          _InfoRow('Expected', '${v.expectedPaneer.toStringAsFixed(2)} kg'),
-          _InfoRow('Actual', '${v.actualPaneer.toStringAsFixed(2)} kg'),
-          _InfoRow('Gap', '${v.gap.toStringAsFixed(2)} kg'),
-          if (v.adjustmentNeeded) ...[
-            const Divider(),
-            Text('Milk reduced by ${v.milkReduction.toStringAsFixed(2)} kg',
-                style: TextStyle(color: AppTheme.warning)),
-          ],
-        ]),
-        actions: [
-          ElevatedButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))
-        ],
+    if (mounted) Navigator.pop(context, v);
+  }
+}
+
+// ── Shared helpers ───────────────────────────────────────────────────────────
+
+class _StatusChip extends StatelessWidget {
+  final String label;
+  final Color color;
+  const _StatusChip(this.label, this.color);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
       ),
+      child: Text(label,
+          style: TextStyle(
+              fontSize: 12, fontWeight: FontWeight.w600, color: color)),
     );
   }
 }
 
-class _ValidationBanner extends StatelessWidget {
-  final PaneerValidation v;
-  const _ValidationBanner({required this.v});
+class _ResultBanner extends StatelessWidget {
+  final String text;
+  final Color color;
+  const _ResultBanner(this.text, this.color);
 
   @override
   Widget build(BuildContext context) {
-    final ok = !v.adjustmentNeeded;
-    final color = ok ? AppTheme.success : AppTheme.warning;
     return Container(
-      padding: const EdgeInsets.all(10),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(ok ? Icons.check_circle_outline : Icons.warning_amber_outlined,
-              color: color, size: 16),
-          const SizedBox(width: 6),
-          Text(ok ? 'Within tolerance' : 'Adjustment will be applied',
-              style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13)),
-        ]),
-        if (!ok) ...[
-          const SizedBox(height: 4),
-          Text('Gap: ${v.gap.toStringAsFixed(2)} kg  •  Milk reduces by ${v.milkReduction.toStringAsFixed(2)} kg',
-              style: TextStyle(fontSize: 12, color: Colors.grey[700])),
-        ],
-      ]),
-    );
-  }
-}
-
-class _DoneCard extends StatelessWidget {
-  final PaneerEntry entry;
-  const _DoneCard({required this.entry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      color: AppTheme.success.withOpacity(0.04),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: AppTheme.success.withOpacity(0.3)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Icon(entry.adjustmentApplied ? Icons.warning_amber : Icons.check_circle,
-                color: entry.adjustmentApplied ? AppTheme.warning : AppTheme.success),
-            const SizedBox(width: 8),
-            const Text('Paneer recorded for this date',
-                style: TextStyle(fontWeight: FontWeight.bold)),
-          ]),
-          const SizedBox(height: 10),
-          _InfoRow('Total milk', '${entry.totalMilkUsed.toStringAsFixed(2)} kg'),
-          _InfoRow('Expected paneer', '${entry.expectedPaneer.toStringAsFixed(2)} kg'),
-          _InfoRow('Actual paneer', '${entry.actualPaneer.toStringAsFixed(2)} kg'),
-          if (entry.adjustmentApplied)
-            _InfoRow('Adjusted milk', '${(entry.adjustedMilkTotal ?? 0).toStringAsFixed(2)} kg',
-                valueColor: AppTheme.warning),
-        ]),
-      ),
+      child: Text(text,
+          textAlign: TextAlign.center,
+          style:
+              TextStyle(color: color, fontWeight: FontWeight.bold)),
     );
   }
 }
@@ -306,7 +655,9 @@ class _InfoRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(children: [
-        Expanded(child: Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 13))),
+        Expanded(
+            child: Text(label,
+                style: TextStyle(color: Colors.grey[600], fontSize: 13))),
         Text(value,
             style: TextStyle(
                 fontWeight: FontWeight.w500,
